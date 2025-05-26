@@ -615,7 +615,7 @@ hitObject.setAttribute('animation__position', {
   }
 }
 
-##bbez blikání
+## bez blikání
 
 #game-win {
   display: none;
