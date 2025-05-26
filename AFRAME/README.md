@@ -532,7 +532,7 @@ if (e.code === 'Space') {
 
 ```
 
-##Funkce střílení
+## Funkce střílení
 
 ```javascript
 shoot: function() {
@@ -570,7 +570,7 @@ shoot: function() {
     }
 },
 ```
-##Funkce animace, pokud se provede raytraicing
+## Funkce animace, pokud se provede raytraicing
 
 ```javascript
 // Animace pádu terče
@@ -594,10 +594,10 @@ hitObject.setAttribute('animation__position', {
 });
 ```
 
-###css výhra 
-##s blikáním
+### css výhra 
+## s blikáním
 
- #game-victory {
+#game-victory {
   position: fixed;
   z-index: 2;
   display: none;
@@ -615,9 +615,9 @@ hitObject.setAttribute('animation__position', {
   }
 }
 
-##bez blikání
+##bbez blikání
 
- #game-win {
+#game-win {
   display: none;
   position: fixed;
   top: 50%;
@@ -630,7 +630,7 @@ hitObject.setAttribute('animation__position', {
 }
 
 
-##do main:
+## do main:
 ```javascript
  <div id="game-win">You won!</div>
 ```
