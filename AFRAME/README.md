@@ -432,3 +432,205 @@ akmile kolizi detekujeme, můžeme provést libovolnou akci dle potřeb aplikace
 - Smazání objektu: Jak ukazuje projekt, typickým použitím je odstranění objektu po několika zásazích (např. cíl zmizí nebo se rozpadne). Pomocí `el.remove()` můžeme objekt z DOMu odebrat. Případně lze nastavit atribut `visible: false` pro prosté skrytí.
 - Spuštění zvuku: A-Frame má komponentu sound, takže na kolizi můžeme reagovat přehráním zvuku (`el.components.sound.playSound()`).
 - Další herní logika: Např. zvýšení skóre, snížení zdraví (jako v projektu – když zdraví klesne na nulu, vyvolá se game over), vytvoření nového objektu (např. exploze).
+
+
+
+
+###First person
+## nastavení kamery
+Look-controls nastavíme na false, aby se překrylo původní ovládání kamery,
+pozici y na úroveň očí, tedy 1.6
+dále je potřeba nastavit model, ten nastavíme podle pozice, aby byl před kamerou, nyní v pravém dolním rohu
+pokud bychom chtěli uprostřed, nastavíme osu x 0
+raycaster určuje směr, a far značí vzdálenost, také, že objekty musí být obstacle
+
+Uvnitř main.js:
+
+```javascript
+    <a-entity camera look-controls="enabled: false" player position="0 1.6 0">
+    <a-entity gltf-model="#pistol" log-gltf-animations animation-mixer="clip: idle;" position="0.2 -0.2 -0.3" rotation="0 -90 0" scale="0.2 0.2 0.2" animation="property: rotation; to: 0 -90 0; dur: 200; easing: linear"></a-entity>
+    <a-entity raycaster="objects: [obstacle]; direction: 0 0 -1; far: 100;" position="0 0 0"></a-entity>
+</a-entity>
+
+```
+## ovládání wasd
+Pohyb dopředu a dozadu, naklánění dostran
+```javascript
+    init: function () {
+        this.moveSpeed = 0.1;
+        this.tiltSpeed = 2;
+        this.keys = {
+            w: false,
+            a: false,
+            s: false,
+            d: false
+        };
+
+        document.addEventListener('keydown', (e) => {
+            if (this.keys.hasOwnProperty(e.key.toLowerCase())) {
+                this.keys[e.key.toLowerCase()] = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (this.keys.hasOwnProperty(e.key.toLowerCase())) {
+                this.keys[e.key.toLowerCase()] = false;
+            }
+        });
+    },
+
+    tick: function () {
+        const position = this.el.getAttribute('position');
+        const rotation = this.el.getAttribute('rotation');
+
+        // Pohyb dopředu/dozadu
+        if (this.keys.w) {
+            position.z -= Math.cos(rotation.y * Math.PI / 180) * this.moveSpeed;
+            position.x -= Math.sin(rotation.y * Math.PI / 180) * this.moveSpeed;
+        }
+        if (this.keys.s) {
+            position.z += Math.cos(rotation.y * Math.PI / 180) * this.moveSpeed;
+            position.x += Math.sin(rotation.y * Math.PI / 180) * this.moveSpeed;
+        }
+
+        // Naklánění do stran
+        if (this.keys.a) {
+            rotation.y += this.tiltSpeed;
+        }
+        if (this.keys.d) {
+            rotation.y -= this.tiltSpeed;
+        }
+
+        this.el.setAttribute('position', position);
+        this.el.setAttribute('rotation', rotation);
+    }
+});
+```
+naklánění do všech stran bez pohybu nahradíme chození
+```javascript
+if (this.keys.w) {
+            rotation.x += this.tiltSpeed;
+        }
+        if (this.keys.s) {
+            rotation.x -= this.tiltSpeed;
+        }
+
+```
+Stisknutí mezery a využití raycasteru.
+```javascript
+// Přidání raycasteru pro střelbu
+this.raycaster = this.el.querySelector('[raycaster]');
+//keydown
+if (e.code === 'Space') {
+    this.keys.space = true;
+    this.shoot();
+}
+//keyup
+if (e.code === 'Space') {
+    this.keys.space = false;
+}
+
+```
+
+##Funkce střílení
+
+```javascript
+shoot: function() {
+    // Získání průsečíků raycasteru
+    const intersections = this.raycaster.components.raycaster.intersectedEls;
+    
+    // Kontrola, zda byl zasažen nějaký terč
+    for (let i = 0; i < intersections.length; i++) {
+        const hitObject = intersections[i];
+        if (hitObject.hasAttribute('obstacle')) {
+            console.log('Trefil jsem terč na pozici:', hitObject.getAttribute('position'));
+            
+            // Animace pádu terče
+            const currentRotation = hitObject.getAttribute('rotation');
+            const currentPosition = hitObject.getAttribute('position');
+            
+            // Nastavení animace pádu
+            hitObject.setAttribute('animation', {
+                property: 'rotation',
+                to: `${currentRotation.x + 90} ${currentRotation.y} ${currentRotation.z}`,
+                dur: 1000,
+                easing: 'easeOutQuad'
+            });
+            
+            // Nastavení animace posunu dolů
+            hitObject.setAttribute('animation__position', {
+                property: 'position',
+                to: `${currentPosition.x} ${currentPosition.y - 1} ${currentPosition.z}`,
+                dur: 1000,
+                easing: 'easeOutQuad'
+            });
+            
+            break;
+        }
+    }
+},
+```
+##Funkce animace, pokud se provede raytraicing
+
+```javascript
+// Animace pádu terče
+const currentRotation = hitObject.getAttribute('rotation');
+const currentPosition = hitObject.getAttribute('position');
+
+// Nastavení animace pádu
+hitObject.setAttribute('animation', {
+    property: 'rotation',
+    to: `${currentRotation.x + 90} ${currentRotation.y} ${currentRotation.z}`,
+    dur: 1000,
+    easing: 'easeOutQuad'
+});
+
+// Nastavení animace posunu dolů
+hitObject.setAttribute('animation__position', {
+    property: 'position',
+    to: `${currentPosition.x} ${currentPosition.y - 1} ${currentPosition.z}`,
+    dur: 1000,
+    easing: 'easeOutQuad'
+});
+```
+
+###css výhra 
+##s blikáním
+
+ #game-victory {
+  position: fixed;
+  z-index: 2;
+  display: none;
+  background: rgba(0, 255, 0, 0.5);
+  color: white;
+  font-size: 3em;
+  padding: 3em;
+  border-radius: 10%;
+  animation: blinker 1.5s 2;
+}
+
+ @keyframes blinker {
+  50% {
+    opacity: 0;
+  }
+}
+
+##bez blikání
+
+ #game-win {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: green;
+  font-size: 48px;
+  font-weight: bold;
+  z-index: 999;
+}
+
+
+##do main:
+```javascript
+ <div id="game-win">You won!</div>
+```
