@@ -1,0 +1,107 @@
+Dobře, nejprve přepíšu zadání z obrázku a poté poskytnu řešení.
+
+Přepis původního zadání:
+
+Napište kód vertex a/nebo fragment shaderu, které implementují následující problém: Jsou předány následující hodnoty vrcholů: pozice a barva. Dále jsou předány samostatné projekční a modelview matice (pro změnu pozice vrcholů). Napište shader(y), které vykreslí daný objekt předanou barvou, pokud je objekt statický. Pokud objekt posouvá (ne rotuje), bude červený.
+
+Nyní následuje odpověď na toto zadání:
+
+Na základě vašeho zadání jsem připravil řešení pomocí GLSL shaderů (vertex a fragment shader). Níže naleznete kód shaderů a podrobné vysvětlení jejich funkce.
+
+Shadery
+Vertex Shader
+OpenGL Shading Language
+
+#version 330 core
+
+// Vstupní atributy vrcholu z aplikace
+layout (location = 0) in vec3 a_position;      // Pozice vrcholu v modelových souřadnicích
+layout (location = 1) in vec4 a_vertexColor;   // Barva vrcholu definovaná v aplikaci
+
+// Uniform proměnné (globální pro shader program, nastavované z aplikace)
+uniform mat4 u_modelViewMatrix;   // Modelview matice pro transformaci pozice
+uniform mat4 u_projectionMatrix;  // Projekční matice
+uniform bool u_isMoving;          // Příznak (true/false), zda se objekt aktuálně posouvá
+uniform bool u_isRotating;        // Příznak (true/false), zda se objekt aktuálně otáčí
+
+// Výstupní (varying) proměnné pro fragment shader
+// Tyto hodnoty budou interpolovány pro každý fragment
+out vec4 v_color;                 // Barva vrcholu pro interpolaci
+out flat bool v_isMoving;         // Příznak posunu (používáme 'flat', aby se neinterpoloval)
+out flat bool v_isRotating;       // Příznak rotace (používáme 'flat')
+
+void main() {
+    // Transformace pozice vrcholu pomocí kombinace modelview a projekční matice
+    // Výsledná pozice v clip-space souřadnicích se přiřadí do gl_Position
+    gl_Position = u_projectionMatrix * u_modelViewMatrix * vec4(a_position, 1.0);
+
+    // Předání barvy vrcholu a stavových příznaků do fragment shaderu
+    v_color = a_vertexColor;
+    v_isMoving = u_isMoving;
+    v_isRotating = u_isRotating;
+}
+Fragment Shader
+OpenGL Shading Language
+
+#version 330 core
+
+// Vstupní (varying) proměnné z vertex shaderu (interpolované hodnoty)
+in vec4 v_color;               // Interpolovaná barva z vertex shaderu
+in flat bool v_isMoving;       // Příznak posunu (z vertex shaderu, neinterpolovaný)
+in flat bool v_isRotating;     // Příznak rotace (z vertex shaderu, neinterpolovaný)
+
+// Výstupní barva fragmentu (pixelu)
+out vec4 gl_FragColor;
+
+void main() {
+    // Inicializace výsledné barvy fragmentu na základě původní barvy vrcholu
+    vec4 outputColor = v_color;
+
+    // Podmínka pro změnu barvy na červenou:
+    // Objekt se posouvá (v_isMoving == true) ALE zároveň se neotáčí (v_isRotating == false).
+    // Tento stav je zjištěn na základě příznaků v_isMoving a v_isRotating,
+    // které jsou předány z aplikace přes vertex shader.
+    if (v_isMoving &&!v_isRotating) {
+        // Modifikace RGB složek: barva se změní na červenou.
+        // Alfa kanál zůstává z původní barvy (v_color.a) pro zachování původní průhlednosti.
+        outputColor = vec4(1.0, 0.0, 0.0, v_color.a); // Červená barva
+    }
+    // Pokud podmínka není splněna (objekt je statický, nebo se otáčí, nebo se posouvá A ZÁROVEŇ otáčí),
+    // použije se původní barva v_color, která byla nastavena na začátku.
+
+    // Přiřazení finální vypočítané barvy do výstupní proměnné gl_FragColor
+    gl_FragColor = outputColor;
+}
+Vysvětlení kódu
+Vertex Shader
+Vstupní atributy:
+in vec3 a_position;: Přijímá 3D pozici každého vrcholu objektu z bufferu vrcholů.    
+in vec4 a_vertexColor;: Přijímá RGBA barvu definovanou pro každý vrchol.    
+Uniform proměnné:
+uniform mat4 u_modelViewMatrix;: Modelview matice (kombinace transformací modelu a pohledu kamery) předaná z aplikace. Používá se k transformaci pozic vrcholů z modelového prostoru do prostoru pohledu (eye/camera space).    
+uniform mat4 u_projectionMatrix;: Projekční matice předaná z aplikace. Transformuje pozice z prostoru pohledu do clip-space (ořezového prostoru).    
+uniform bool u_isMoving;: Booleovský příznak nastavený aplikací. Pokud je true, znamená to, že objekt se v aktuálním snímku posouvá (translace). Shader sám o sobě nedetekuje pohyb v čase; pouze reaguje na tento externě dodaný stav.    
+uniform bool u_isRotating;: Podobně jako u_isMoving, tento booleovský příznak z aplikace signalizuje, zda se objekt v aktuálním snímku otáčí.    
+Výstupní (varying) proměnné:
+out vec4 v_color;: Přenáší původní barvu vrcholu (a_vertexColor) do fragment shaderu. Tato hodnota bude interpolována přes povrch primitiva.    
+out flat bool v_isMoving; a out flat bool v_isRotating;: Přenášejí stavové příznaky posunu a rotace do fragment shaderu. Klíčové slovo flat zajišťuje, že booleovská hodnota nebude interpolována, ale bude pro všechny fragmenty daného primitiva konstantní (což je pro příznaky stavu celého objektu žádoucí).    
+Funkce main():
+gl_Position = u_projectionMatrix * u_modelViewMatrix * vec4(a_position, 1.0);: Standardní transformace pozice vrcholu. Vektor pozice a_position je rozšířen na vec4 (homogenní souřadnice s w=1.0) a poté postupně násoben modelview a projekční maticí. Výsledkem je finální pozice vrcholu v clip-space, která se ukládá do vestavěné proměnné gl_Position.    
+Původní barva a_vertexColor a příznaky u_isMoving, u_isRotating jsou přiřazeny odpovídajícím out proměnným pro jejich předání do fragment shaderu.
+Fragment Shader
+Vstupní (varying) proměnné:
+in vec4 v_color;: Přijímá interpolovanou barvu z vertex shaderu. Každý fragment tak získá barvu, která je výsledkem interpolace barev vrcholů, které tvoří dané primitivum.    
+in flat bool v_isMoving;: Přijímá neinterpolovaný příznak posunu z vertex shaderu.
+in flat bool v_isRotating;: Přijímá neinterpolovaný příznak rotace z vertex shaderu.
+Výstupní proměnná:
+out vec4 gl_FragColor;: Definuje finální RGBA barvu, která bude zapsána do framebufferu pro aktuální fragment (pixel).    
+Funkce main():
+vec4 outputColor = v_color;: Výsledná barva outputColor je nejprve inicializována původní interpolovanou barvou fragmentu v_color. Toto je barva, která se použije, pokud objekt nesplňuje specifickou podmínku pro změnu na červenou (tj. pokud je statický, nebo pokud se otáčí).
+Podmínka pro červenou barvu:
+if (v_isMoving &&!v_isRotating): Tato podmínka kontroluje, zda je příznak v_isMoving pravdivý (objekt se posouvá) A ZÁROVEŇ (&&) je příznak v_isRotating nepravdivý (!v_isRotating - objekt se neotáčí).
+outputColor = vec4(1.0, 0.0, 0.0, v_color.a);: Pokud je výše uvedená podmínka splněna, RGB složky outputColor jsou nastaveny na červenou ((1.0, 0.0, 0.0)). Alfa kanál (v_color.a) je převzat z původní barvy, aby se zachovala původní průhlednost objektu.    
+gl_FragColor = outputColor;: Finální určená barva (buď původní, nebo červená) je přiřazena výstupu fragment shaderu.
+Toto řešení předpokládá, že aplikační logika na CPU správně vyhodnocuje stavy "posouvá se" a "otáčí se" a předává odpovídající booleovské hodnoty do uniform proměnných u_isMoving a u_isRotating každý snímek před vykreslením.    
+
+
+Sources and related content

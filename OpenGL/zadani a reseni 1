@@ -1,0 +1,161 @@
+Shader:
+Napište shadery (vertex i fragment), které implementují následující problém:
+Jsou předány následující hodnoty vrcholů: pozice a barva. Dále je předána transformační matice pro změnu pozice vrcholů.
+Naprogramujte shadery, které vykreslí daný objekt předanou barvou, ale...
+...pokud se objekt zrovna otáčí, bude z 50 % průhledný (tj. jeho barva se nakombinuje s modrou o 50 % průhlednosti).
+...pokud se objekt posouvá, bude o 30 % tmavší (tj. jeho barva bude smíchána s černou barvou v poměru 70:30).
+...pokud oboje, tak obě operace kombinujte.
+Stručně kód vysvětlete: jaké hodnoty modifikujete a na základě čeho (jak jste zjistili, že se jedná např. o rotaci). Ne obecné komentáře typu „Zde nastavuji průhlednost.“ (edited)
+
+Na základě vašeho zadání jsem připravil řešení pomocí GLSL shaderů (vertex a fragment shader). Níže naleznete kód shaderů a podrobné vysvětlení jejich funkce.
+
+Shadery
+Vertex Shader (shader.vert)
+OpenGL Shading Language
+
+#version 330 core
+
+// Vstupní atributy vrcholu z aplikace
+in vec3 a_position;      // Pozice vrcholu v modelových souřadnicích
+in vec4 a_vertexColor;   // Barva vrcholu definovaná v aplikaci
+
+// Uniform proměnné (globální pro shader program, nastavované z aplikace)
+uniform mat4 u_modelViewProjectionMatrix; // Kombinovaná transformační matice (Model * View * Projection)
+uniform bool u_isRotating;    // Příznak (true/false), zda se objekt aktuálně otáčí
+uniform bool u_isTranslating; // Příznak (true/false), zda se objekt aktuálně posouvá
+
+// Výstupní (varying) proměnné pro fragment shader
+// Tyto hodnoty budou interpolovány pro každý fragment
+out vec4 v_color;           // Barva vrcholu pro interpolaci
+out flat bool v_isRotating;    // Příznak rotace (používáme 'flat' pro booleany, aby se neinterpolovaly napříč primitivem)
+out flat bool v_isTranslating; // Příznak translace (používáme 'flat')
+
+void main() {
+    // Transformace pozice vrcholu pomocí matice u_modelViewProjectionMatrix
+    // Výsledná pozice v clip-space souřadnicích se přiřadí do gl_Position
+    gl_Position = u_modelViewProjectionMatrix * vec4(a_position, 1.0);
+
+    // Předání barvy vrcholu a stavových příznaků rotace/translace do fragment shaderu
+    v_color = a_vertexColor;
+    v_isRotating = u_isRotating;
+    v_isTranslating = u_isTranslating;
+}
+Fragment Shader (shader.frag)
+OpenGL Shading Language
+
+#version 330 core
+
+// Vstupní (varying) proměnné z vertex shaderu (interpolované hodnoty)
+in vec4 v_color;             // Interpolovaná barva z vertex shaderu
+in flat bool v_isRotating;    // Příznak rotace (z vertex shaderu, neinterpolovaný)
+in flat bool v_isTranslating; // Příznak translace (z vertex shaderu, neinterpolovaný)
+
+// Výstupní barva fragmentu (pixelu)
+out vec4 gl_FragColor;
+
+void main() {
+    // Inicializace výsledné barvy fragmentu na základě interpolované barvy z vertex shaderu
+    vec4 finalColor = v_color;
+
+    // Podmínka pro rotaci objektu:
+    // Zjišťujeme na základě příznaku v_isRotating, který je předán z aplikace přes vertex shader.
+    if (v_isRotating) {
+        // Modifikace RGB složek: barva se smíchá s modrou (vec3(0.0, 0.0, 1.0))
+        // pomocí funkce mix s faktorem 0.5. Výsledkem je 50% původní barvy a 50% modré.
+        finalColor.rgb = mix(finalColor.rgb, vec3(0.0, 0.0, 1.0), 0.5);
+
+        // Modifikace Alfa složky: průhlednost se nastaví na 50 % původní hodnoty.
+        finalColor.a *= 0.5;
+    }
+
+    // Podmínka pro posun objektu:
+    // Zjišťujeme na základě příznaku v_isTranslating, který je předán z aplikace přes vertex shader.
+    if (v_isTranslating) {
+        // Modifikace RGB složek: barva se smíchá s černou (vec3(0.0, 0.0, 0.0))
+        // pomocí funkce mix s faktorem 0.3. Výsledkem je 70% původní barvy (nebo barvy po rotaci)
+        // a 30% černé, což způsobí ztmavení o 30 %.
+        // Alfa kanál se touto operací nemění.
+        finalColor.rgb = mix(finalColor.rgb, vec3(0.0, 0.0, 0.0), 0.3);
+    }
+
+    // Pokud jsou aktivní oba příznaky (v_isRotating i v_isTranslating),
+    // efekty se aplikují sekvenčně:
+    // 1. Nejprve se aplikuje efekt rotace (smíchání s modrou, úprava alfa kanálu).
+    // 2. Poté se na výslednou barvu z kroku 1 aplikuje efekt translace (ztmavení RGB složek).
+
+    // Přiřazení finální vypočítané barvy (včetně alfa kanálu) do výstupní proměnné gl_FragColor
+    gl_FragColor = finalColor;
+}
+Vysvětlení kódu
+Vertex Shader
+Vstupní atributy:
+
+in vec3 a_position;: Přijímá 3D pozici každého vrcholu objektu z bufferu vrcholů nastaveného v aplikaci.    
+in vec4 a_vertexColor;: Přijímá RGBA barvu definovanou pro každý vrchol.    
+Uniform proměnné:
+
+uniform mat4 u_modelViewProjectionMatrix;: Jedná se o transformační matici (typicky součin Model, View a Projection matic), kterou aplikace posílá shaderu. Tato matice transformuje pozice vrcholů z modelového prostoru do clip-space (ořezového prostoru).    
+uniform bool u_isRotating;: Booleovská proměnná nastavená aplikací. Pokud je true, znamená to, že objekt se v aktuálním snímku otáčí. Shader sám "nezjišťuje" rotaci v čase; pouze reaguje na tento externě dodaný příznak.    
+uniform bool u_isTranslating;: Podobně jako u_isRotating, tento booleovský příznak z aplikace signalizuje, zda se objekt v aktuálním snímku posouvá.    
+Výstupní (varying) proměnné:
+
+out vec4 v_color;: Přenáší barvu vrcholu (a_vertexColor) do fragment shaderu. Tato hodnota bude interpolována přes povrch primitiva (např. trojúhelníku).    
+out flat bool v_isRotating; a out flat bool v_isTranslating;: Přenášejí stavové příznaky rotace a translace do fragment shaderu. Klíčové slovo flat zajišťuje, že hodnota nebude interpolována, ale bude pro všechny fragmenty daného primitiva konstantní (což je pro booleovské příznaky stavu objektu žádoucí).    
+Funkce main():
+
+gl_Position = u_modelViewProjectionMatrix * vec4(a_position, 1.0);: Transformuje vstupní pozici vrcholu a_position (rozšířenou na vec4 přidáním w=1.0) pomocí matice u_modelViewProjectionMatrix. Výsledek je finální pozice vrcholu v clip-space, která se ukládá do vestavěné proměnné gl_Position.    
+Hodnoty a_vertexColor, u_isRotating a u_isTranslating jsou přiřazeny odpovídajícím out proměnným, aby byly dostupné ve fragment shaderu.
+Fragment Shader
+Vstupní (varying) proměnné:
+
+in vec4 v_color;: Přijímá interpolovanou barvu z vertex shaderu. Každý fragment tak získá barvu, která je výsledkem interpolace barev vrcholů, které tvoří dané primitivum.    
+in flat bool v_isRotating; a in flat bool v_isTranslating;: Přijímají neinterpolované příznaky stavu rotace a translace z vertex shaderu.
+Výstupní proměnná:
+
+out vec4 gl_FragColor;: Definuje finální RGBA barvu, která bude zapsána do framebufferu pro aktuální fragment (pixel).    
+Funkce main():
+
+vec4 finalColor = v_color;: Inicializuje pracovní proměnnou finalColor původní interpolovanou barvou fragmentu.
+Detekce a aplikace efektu rotace:
+Stav rotace je určen hodnotou v_isRotating.
+Pokud v_isRotating je true:
+finalColor.rgb = mix(finalColor.rgb, vec3(0.0, 0.0, 1.0), 0.5);: RGB složky barvy finalColor jsou modifikovány. Funkce mix(x, y, a) provádí lineární interpolaci mezi x a y pomocí faktoru a (tj. x*(1-a) + y*a). Zde se původní RGB barva smíchá s modrou barvou (vec3(0.0, 0.0, 1.0)) v poměru 50:50 (faktor 0.5).    
+finalColor.a *= 0.5;: Alfa složka barvy finalColor je vynásobena 0.5. Tím se průhlednost objektu nastaví na 50 % jeho původní průhlednosti (pokud byla původní alfa 1.0, nová bude 0.5).    
+Detekce a aplikace efektu translace:
+Stav translace je určen hodnotou v_isTranslating.
+Pokud v_isTranslating je true:
+finalColor.rgb = mix(finalColor.rgb, vec3(0.0, 0.0, 0.0), 0.3);: RGB složky barvy finalColor (která již mohla být modifikována rotací) jsou smíchány s černou barvou (vec3(0.0, 0.0, 0.0)) s faktorem 0.3. To znamená, že 30 % výsledné barvy bude černá a 70 % bude barva z předchozího kroku. Efektivně to ztmaví objekt o 30 %. Alfa kanál se touto operací nemění.    
+Kombinace efektů: Pokud jsou oba příznaky (v_isRotating i v_isTranslating) pravdivé, efekty se aplikují sekvenčně v pořadí, jak jsou napsány v kódu: nejprve efekt rotace, poté na výsledek efekt translace.
+gl_FragColor = finalColor;: Výsledná modifikovaná barva finalColor je přiřazena jako výstupní barva fragmentu.
+Toto řešení předpokládá, že logika pro určení, zda se objekt otáčí nebo posouvá (tj. nastavení uniform proměnných u_isRotating a u_isTranslating), je implementována v hlavní aplikaci na CPU a tyto stavy jsou každý snímek předávány do shaderů.
+
+
+Hodnoty určující, zda se vrchol (nebo přesněji celý objekt, jehož je vrchol součástí) otáčí nebo posouvá, se musí nastavovat mimo shader z několika klíčových důvodů souvisejících s tím, jak shadery fungují a jak je řízena grafická pipeline:
+
+Shadery jsou programy pro zpracování dat, nikoli pro řízení stavu aplikace:
+
+Vertex a fragment shadery jsou malé programy běžící na grafickém procesoru (GPU). Jejich hlavním úkolem je provádět operace na velkém množství dat paralelně – vertex shader zpracovává jednotlivé vrcholy a fragment shader jednotlivé pixely (fragmenty).    
+Nemají přímý přístup k celkovému stavu vaší aplikace, k uživatelskému vstupu (stisknutí klávesy, pohyb myši), k fyzikální simulaci nebo k logice animace, která určuje, zda se objekt právě teď otáčí nebo posouvá. Tyto aspekty jsou řízeny hlavním programem běžícím na CPU.
+Shadery operují na datech pro aktuální snímek:
+
+Shader dostává data pro aktuálně vykreslovaný snímek. Vertex shader obdrží atributy vrcholů (jako pozice, barva) a uniformní proměnné (jako transformační matice, čas, nebo právě příznaky u_isRotating, u_isTranslating).    
+Shader sám o sobě nemá paměť o předchozích snímcích nebo událostech v aplikaci, aby mohl odvodit, že "objekt se začal otáčet" nebo "objekt se přestal pohybovat".
+Oddělení zodpovědností (CPU vs. GPU):
+
+CPU (aplikace): Je zodpovědné za herní logiku, zpracování vstupu, fyziku, animace a rozhodování o tom, co se s objekty ve scéně děje. Například, pokud uživatel stiskne klávesu pro rotaci, CPU tuto událost zaznamená a nastaví příslušný stav (např. "objekt se otáčí").    
+GPU (shadery): Je zodpovědné za rychlé a efektivní vykreslení scény na základě dat a instrukcí, které mu CPU poskytne.    
+Uniformní proměnné jako komunikační kanál:
+
+Aby shader mohl reagovat na stav určený aplikací (jako je rotace nebo posun), musí mu aplikace tento stav explicitně sdělit. K tomu slouží uniform proměnné.    
+Ve vašem případě (a v mém předchozím řešení) jsou uniform bool u_isRotating; a uniform bool u_isTranslating; přesně těmito komunikačními kanály. Aplikace na CPU určí, zda se objekt otáčí/posouvá, a nastaví tyto booleovské hodnoty. Shadery je pak přečtou a podle nich upraví barvu a průhlednost.
+Jak by to vypadalo v praxi:
+
+Vaše hlavní aplikace (např. v C++, JavaScriptu) by měla kód, který například detekuje stisk klávesy pro pohyb.
+Pokud je klávesa stisknuta, aplikace nastaví proměnnou isMovingThisFrame = true;.
+Před vykreslením objektu aplikace nahraje hodnotu této proměnné do uniform bool u_isTranslating v shaderu.
+Vertex shader pak tuto uniform hodnotu přečte a předá ji (pomocí varying nebo flat out proměnné) fragment shaderu.
+Fragment shader na základě této hodnoty aplikuje požadovaný efekt (ztmavení).
+Shader tedy sám "nezjistí", že se objekt otáčí nebo pohybuje ve smyslu aplikační logiky. Může sice pracovat s daty, která implikují pohyb nebo rotaci (např. změna transformační matice v čase, předaný úhel rotace ), ale rozhodnutí, zda se má aplikovat specifický efekt, protože "objekt je ve stavu otáčení", přichází z vnějšku – od řídící aplikace.   
+
+
+
